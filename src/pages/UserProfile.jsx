@@ -31,6 +31,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import TopNav from "../components/TopNav";
 import { useCMS } from "../context/CMSContext";
 import { ROLE_AVATARS } from "../constants/avatars";
+import { sendResetEmail, sendUpdateEmailVerification } from "../firebase/authService";
 
 export default function UserProfile() {
   const navigate = useNavigate();
@@ -65,6 +66,17 @@ export default function UserProfile() {
   const [pwdOtpInput, setPwdOtpInput] = useState("");
   const [pwdGeneratedOtp, setPwdGeneratedOtp] = useState("");
   const [passwordMsg, setPasswordMsg] = useState({ type: "", text: "" });
+  const [pwdCooldown, setPwdCooldown] = useState(0);
+
+  React.useEffect(() => {
+    let timer;
+    if (pwdCooldown > 0) {
+      timer = setInterval(() => {
+        setPwdCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [pwdCooldown]);
 
   // Change Email
   const [newEmail, setNewEmail] = useState("");
@@ -489,99 +501,44 @@ export default function UserProfile() {
           {/* Security Section — 2-column format */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 
-            {/* Change Password via OTP */}
+            {/* Change Password via Email Link */}
             <div className="bg-white/95 border border-white/80 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                 <Lock className="w-4 h-4 text-sky-600" />
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Change Password</h3>
                   <p className="text-xs text-slate-500">
-                    OTP will be sent to: <span className="font-semibold text-slate-700">{currentUser?.email}</span>
+                    A secure password reset link will be sent to your email.
                   </p>
                 </div>
               </div>
               <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">New Password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => {
-                      setNewPassword(e.target.value);
-                      setPwdOtpSent(false);
-                      setPwdOtpInput("");
-                      setPasswordMsg({ type: "", text: "" });
-                    }}
-                    placeholder="Enter new password (min. 6 characters)"
-                    disabled={pwdOtpSent}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-400 outline-none disabled:bg-slate-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm New Password</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => {
-                        setConfirmPassword(e.target.value);
+                <div className="bg-sky-50 rounded-xl p-4 border border-sky-100">
+                  <p className="text-xs text-slate-600 mb-3 text-center">
+                    Click the button below to receive an email from Firebase containing a secure link to reset your password.
+                  </p>
+                  <button
+                    onClick={async () => {
+                      setPwdOtpSent(true);
+                      setPasswordMsg({ type: "info", text: "Sending..." });
+                      try {
+                        await sendResetEmail(currentUser?.email);
+                        setPasswordMsg({ type: "success", text: `Password reset email sent to ${currentUser?.email}!` });
+                        setPwdCooldown(300);
+                      } catch (err) {
+                        setPasswordMsg({ type: "error", text: "Failed to send reset email. " + err.message });
+                      } finally {
                         setPwdOtpSent(false);
-                        setPwdOtpInput("");
-                        setPasswordMsg({ type: "", text: "" });
-                      }}
-                      placeholder="Re-enter new password"
-                      disabled={pwdOtpSent}
-                      className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-400 outline-none disabled:bg-slate-50"
-                    />
-                    <button
-                      onClick={() => {
-                        if (!newPassword) return setPasswordMsg({ type: "error", text: "Please enter a new password." });
-                        if (newPassword.length < 6) return setPasswordMsg({ type: "error", text: "New password must be at least 6 characters." });
-                        if (newPassword !== confirmPassword) return setPasswordMsg({ type: "error", text: "Passwords do not match." });
-                        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-                        setPwdGeneratedOtp(otp);
-                        setPwdOtpSent(true);
-                        setPasswordMsg({ type: "info", text: `OTP sent to ${currentUser?.email}. (Demo OTP: ${otp})` });
-                      }}
-                      disabled={pwdOtpSent}
-                      className="px-4 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap"
-                    >
-                      Send OTP
-                    </button>
-                  </div>
+                      }
+                    }}
+                    disabled={pwdOtpSent || pwdCooldown > 0}
+                    className="w-full px-4 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition cursor-pointer"
+                  >
+                    {pwdCooldown > 0 
+                      ? `Resend link in ${Math.floor(pwdCooldown / 60)}:${(pwdCooldown % 60).toString().padStart(2, '0')}`
+                      : "Send Password Reset Link"}
+                  </button>
                 </div>
-
-                {pwdOtpSent && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Enter OTP</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={pwdOtpInput}
-                        onChange={(e) => setPwdOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="6-digit OTP"
-                        maxLength={6}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs tracking-widest font-bold focus:ring-2 focus:ring-sky-400 outline-none"
-                      />
-                      <button
-                        onClick={() => {
-                          if (pwdOtpInput !== pwdGeneratedOtp) return setPasswordMsg({ type: "error", text: "Invalid OTP. Please try again." });
-                          updateProfile({ password: newPassword });
-                          setPasswordMsg({ type: "success", text: "Password updated successfully!" });
-                          setNewPassword("");
-                          setConfirmPassword("");
-                          setPwdOtpSent(false);
-                          setPwdOtpInput("");
-                          setPwdGeneratedOtp("");
-                        }}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap"
-                      >
-                        Verify &amp; Update
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {passwordMsg.text && (
                   <p className={`text-xs font-semibold px-3 py-2 rounded-xl border ${
                     passwordMsg.type === "error"
@@ -596,7 +553,7 @@ export default function UserProfile() {
               </div>
             </div>
 
-            {/* Change Email via OTP */}
+            {/* Change Email via Firebase Verification Link */}
             <div className="bg-white/95 border border-white/80 rounded-3xl p-6 shadow-sm space-y-4">
               <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                 <Mail className="w-4 h-4 text-sky-600" />
@@ -612,52 +569,36 @@ export default function UserProfile() {
                     <input
                       type="email"
                       value={newEmail}
-                      onChange={(e) => { setNewEmail(e.target.value); setOtpSent(false); setOtpInput(""); setEmailMsg({ type: "", text: "" }); }}
+                      onChange={(e) => { setNewEmail(e.target.value); setOtpSent(false); setEmailMsg({ type: "", text: "" }); }}
                       placeholder="Enter new email address"
                       className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-400 outline-none"
                       disabled={otpSent}
                     />
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (!newEmail || !newEmail.includes("@")) return setEmailMsg({ type: "error", text: "Please enter a valid email." });
-                        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-                        setGeneratedOtp(otp);
                         setOtpSent(true);
-                        setEmailMsg({ type: "info", text: `OTP sent to ${newEmail}. (Demo OTP: ${otp})` });
+                        setEmailMsg({ type: "info", text: "Sending verification link..." });
+                        try {
+                          await sendUpdateEmailVerification(newEmail);
+                          setEmailMsg({ type: "success", text: `Verification link sent to ${newEmail}!` });
+                        } catch (err) {
+                          if (err.code === 'auth/requires-recent-login' || err.code === 'auth/user-token-expired') {
+                            setEmailMsg({ type: "error", text: "For security, changing email requires a recent login. Please log out and log back in." });
+                          } else {
+                            setEmailMsg({ type: "error", text: "Failed to send link. " + err.message });
+                          }
+                        } finally {
+                          setOtpSent(false);
+                        }
                       }}
                       disabled={otpSent}
                       className="px-4 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap"
                     >
-                      Send OTP
+                      Verify New Email
                     </button>
                   </div>
                 </div>
-                {otpSent && (
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Enter OTP</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={otpInput}
-                        onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="6-digit OTP"
-                        maxLength={6}
-                        className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs tracking-widest font-bold focus:ring-2 focus:ring-sky-400 outline-none"
-                      />
-                      <button
-                        onClick={() => {
-                          if (otpInput !== generatedOtp) return setEmailMsg({ type: "error", text: "Invalid OTP. Please try again." });
-                          updateProfile({ email: newEmail });
-                          setEmailMsg({ type: "success", text: "Email updated successfully!" });
-                          setNewEmail(""); setOtpSent(false); setOtpInput(""); setGeneratedOtp("");
-                        }}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
-                      >
-                        Verify &amp; Update
-                      </button>
-                    </div>
-                  </div>
-                )}
                 {emailMsg.text && (
                   <p className={`text-xs font-semibold px-3 py-2 rounded-xl border ${
                     emailMsg.type === "error"

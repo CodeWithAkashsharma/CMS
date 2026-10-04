@@ -5,6 +5,8 @@ import {
   onAuthStateChanged,
   updateProfile as updateFirebaseProfile,
   sendPasswordResetEmail,
+  verifyBeforeUpdateEmail,
+  updatePassword
 } from "firebase/auth";
 import { auth, isConfigured } from "./config";
 import { saveUserProfileToFirestore, getUserProfileFromFirestore } from "./firestoreService";
@@ -202,4 +204,21 @@ export const sendResetEmail = async (email) => {
     throw new Error("Firebase is not configured.");
   }
   return sendPasswordResetEmail(auth, email.trim());
+};
+
+// -------------------------------------------------------------
+// EMAIL VERIFICATION & UPDATE
+// -------------------------------------------------------------
+export const sendUpdateEmailVerification = async (newEmail) => {
+  if (!isConfigured || !auth?.currentUser) {
+    throw new Error("Firebase is not configured or user not logged in.");
+  }
+  return verifyBeforeUpdateEmail(auth.currentUser, newEmail.trim());
+};
+
+export const updateUserPassword = async (newPassword) => {
+  if (!isConfigured || !auth?.currentUser) {
+    throw new Error("Firebase is not configured or user not logged in.");
+  }
+  return updatePassword(auth.currentUser, newPassword);
 };
